@@ -63,7 +63,15 @@ ESPERADO = {
     # cruza F_COLAPSO antes. Es la consecuencia esperada, no una
     # regresion; el signo es el correcto (menos inercia, colapso mas
     # rapido) y la magnitud, un 5%, es coherente con el -9% de Ek.
-    't_colapso': 1.81,
+    # 1,81 -> 1,87 s el 4-nov-2026: la regulacion primaria pasa de un
+    # retardo unico de 8 s al modelo de Anderson-Mirheydar, cuya fraccion de
+    # alta presion responde al instante (ver dinamica_frecuencia). La
+    # primaria llega antes, el sistema aguanta 0,06 s mas y sigue
+    # COLAPSANDO: el signo es el correcto y la conclusion -el escenario
+    # calibrado colapsa sin ningun BTM adicional- no cambia. La energia
+    # cinetica, la reserva y el resto de este test no se mueven, como debe
+    # ser: el regulador no toca el punto de operacion.
+    't_colapso': 1.87,
     'P_carga_es': 27000.0,
 }
 TOL = {'P_gen': 0.1, 'P_carga': 0.1, 'energia_cinetica_GWs': 0.15,

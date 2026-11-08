@@ -97,8 +97,12 @@ print(f"  resto termico (Cogen & Waste + no etiquetado): "
 print(f"  {RESTO_TERMICO}: reducido al 1% (minimo tecnico simbolico)")
 
 # --- Demanda de España: +6,6% para llegar a ~27.000 MW, mismo reparto ---
-FACTOR_DEMANDA_ES = 27000.0 / 25326.2
+# El factor se calcula contra la demanda que trae la red, no contra una
+# constante: era `27000 / 25326,2`, y al cambiar el reparto de demanda
+# (6-nov-2026) la base paso a 25.515 MW y el apagon salia con 27.202 MW.
+DEMANDA_ES_MW = 27000.0
 es_loads = n.loads[n.loads.bus.isin(es_buses)].index
+FACTOR_DEMANDA_ES = DEMANDA_ES_MW / float(n.loads.loc[es_loads, 'p_set'].sum())
 n.loads.loc[es_loads, 'p_set'] *= FACTOR_DEMANDA_ES
 print(f"\nDemanda España escalada por {FACTOR_DEMANDA_ES:.4f} (-> ~27.000 MW)")
 

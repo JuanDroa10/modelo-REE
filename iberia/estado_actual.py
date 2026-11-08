@@ -261,7 +261,7 @@ def n1(inf):
         inf.dato(f"[{red}] CREAN sobrecargas nuevas",
                  f"{nuevas} de {len(ac)}")
         inf.dato(f"[{red}] severas (+50 pp)", _fmt(severas, 0))
-        inf.dato(f"[{red}] aislan carga IBERICA",
+        inf.dato(f"[{red}] aislan carga ESPANOLA",
                  f"{int((ib > 0.1).sum())}", f"peor {ib.max():,.1f} MW")
 
 

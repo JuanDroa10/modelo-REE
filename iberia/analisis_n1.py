@@ -284,7 +284,15 @@ def _grafo(n):
 
 # Paises modelados como agregado de 4 buses ficticios. Su carga NO es
 # carga del sistema que se estudia: es la condicion de contorno.
-PAISES_AGREGADOS_N1 = ('FR',)
+#
+# PORTUGAL INCLUIDO desde el 7-nov-2026. Antes solo se excluia Francia, y
+# Portugal es exactamente igual: 4 nudos de 1.200 MW, cada uno colgado de
+# su interconexion. El "peor caso iberico" de 1.200,8 MW que el informe
+# citaba era uno de esos nudos, no carga espanola (el peor caso espanol
+# real eran 561,1 MW en el apagon). Desde entonces la columna
+# `MW_desconectados_iberia` mide carga ESPANOLA: el nombre se conserva
+# para no romper los CSV ni sus lectores.
+PAISES_AGREGADOS_N1 = ('FR', 'PT')
 
 
 def separar_islas(n):

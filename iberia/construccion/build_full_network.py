@@ -154,12 +154,63 @@ print(f"  Demanda media: {mean_demand:.1f} MW")
 # Usar la demanda media para el snapshot único
 demand_value = mean_demand
 
+
+def reparto_demanda(load_dist, buses):
+    """Cuota de demanda de cada barra, corregida en dos pasos (6-nov-2026).
+
+    El dataset reparte la demanda por POBLACION (cada km2 de WorldPop a la
+    barra mas cercana; ver Description.pdf de Nokandi, seccion 5.1). Tal
+    cual, ponia el 37,5 % de la demanda espanola en Madrid -REE da el
+    11,8 %-: con 16 GW en Madrid la punta salia con 40 lineas
+    sobrecargadas y la tension de Madrid a 0,79 pu.
+
+    1. DUPLICACION POR NIVELES. Las barras con coordenadas identicas son
+       niveles de tension de UNA subestacion (lo dice el propio
+       Description.pdf, seccion 3.1), y el CSV les da a TODAS la misma
+       cuota entera: una subestacion 220/400 kV contaba su demanda dos
+       veces. Se reparte la cuota de la subestacion entre sus niveles.
+    2. CUOTA POR COMUNIDAD. Dentro de cada comunidad autonoma se conserva
+       el reparto del dataset, pero el total de la comunidad se lleva a su
+       cuota de la demanda de REE de 2024 (demanda_ccaa_ree_2024.csv). La
+       comunidad de cada barra sale de bus_ccaa.csv (asignar_ccaa.py).
+
+    Las barras del CSV de demanda que no estan en bus_data.csv (24, entre
+    ellas las 4 frontera que el dataset renombra a FR) se descartan, como
+    antes; ahora su cuota no se pierde, porque cada comunidad se lleva a
+    su total.
+    """
+    d = load_dist.copy()
+    d["bus_id"] = d["bus_id"].astype(str)
+    b = buses.copy()
+    b["bus_id"] = b["bus_id"].astype(str)
+    d = d[d.bus_id.isin(b.bus_id)].merge(b[["bus_id", "x", "y"]], on="bus_id")
+    sitio = d.x.round(6).astype(str) + "," + d.y.round(6).astype(str)
+    d["demand"] = d["demand"] / d.groupby(sitio)["bus_id"].transform("size")
+
+    ccaa = pd.read_csv(config.dato("bus_ccaa.csv")).astype({"bus_id": str})
+    d = d.merge(ccaa, on="bus_id", how="left")
+    sin = d[d.ccaa.isna()]
+    if len(sin):
+        raise SystemExit("barras sin comunidad en bus_ccaa.csv: %s"
+                         % list(sin.bus_id[:10]))
+    ree = pd.read_csv(config.dato("demanda_ccaa_ree_2024.csv"))
+    ree = ree[ree.ccaa.isin(d.ccaa.unique())].set_index("ccaa")
+    cuota = ree.demanda_gwh_2024 / ree.demanda_gwh_2024.sum()
+    actual = d.groupby("ccaa")["demand"].sum()
+    d["demand"] = d["demand"] * d.ccaa.map(cuota / actual)
+    return d.set_index("bus_id")["demand"]
+
+
+cuota = reparto_demanda(load_dist, buses)
+_ccaa = pd.read_csv(config.dato("bus_ccaa.csv")).set_index("bus_id").ccaa
+print("  Reparto por comunidad (REE 2024): Madrid %.1f %% de la demanda"
+      % (100 * cuota[_ccaa.reindex(cuota.index) == "Madrid"].sum()))
+
 n_load_added = 0
-for _, row in load_dist.iterrows():
-    bus_id = str(row["bus_id"])
+for bus_id, share in cuota.items():
     if bus_id not in bus_ids_validos:
         continue
-    demand_mw = demand_value * float(row["demand"])
+    demand_mw = demand_value * float(share)
     if demand_mw > 0:
         n.add(
             "Load",

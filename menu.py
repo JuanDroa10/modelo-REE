@@ -12,8 +12,8 @@ distintos, y dos consolas iguales hacen que la comparacion sea de los
 SISTEMAS y no de lo que cada consola decidio enseñar.
 
 POR QUE MERECE LA PENA, mas alla de agrupar ordenes: construir y resolver el
-caso base cuesta entre 20 s (apagon) y varios minutos (punta, por el lazo de
-limites de reactivo). Aqui se construye UNA VEZ por sesion y se reutiliza, de
+caso base con limites de reactivo cuesta alrededor de 1 min en cualquier
+punto de operacion. Aqui se construye UNA VEZ por sesion y se reutiliza, de
 modo que preguntar por una barra, por el BTM o por el balance por pais es
 inmediato a partir de la segunda vez.
 
@@ -48,8 +48,8 @@ _ESCENARIOS = [
      'RECONSTRUIDO de fuentes secundarias; el N-1 corre sobre un caso '
      'base LIMPIO', '92'),
     ('punta', '15-ene 20-21 h (punta invernal nocturna)',
-     'DERIVADO; su caso base NO esta limpio (L1357): solo citable como '
-     'severidad relativa', '93'),
+     'DERIVADO; su caso base arranca con 5 sobrecargas (despacho sin '
+     'orden de merito): el N-1 se cita contra esa referencia', '93'),
     ('escenario', 'exportacion generica de 3.000 MW (despacho uniforme)',
      'SINTETICO; no representa ninguna hora real', '93'),
 ]
@@ -143,7 +143,7 @@ def base(con_limites=True, verbose=True):
             print(_c(f"\n   construyendo {_PUNTO['etiqueta']} "
                      f"(solo la primera vez)...", '90'))
             if _PUNTO['tipo'] == 'punta' and con_limites:
-                print(_c("   la punta tarda varios minutos: su lazo de "
+                print(_c("   la punta tarda alrededor de 1 min: su lazo de "
                          "reactivo no converge a la primera", '90'))
         t0 = time.time()
         from iberia import analisis_n1 as an
@@ -259,53 +259,8 @@ def elegir_punto(primera_vez=False):
 # 1. Simulaciones (proceso aparte)
 # ---------------------------------------------------------------------------
 
-def sim_caso_base():
-    correr(['iberia.estado_actual'])
-
-
 def sim_entsoe():
     correr(['iberia.validar_traza_28a'])
-
-
-def sim_invariantes():
-    """La bateria de verificadores. Equivale a los 'invariantes' del STN:
-    comprobaciones de lo que NO puede cambiar sin que algo este mal."""
-    pruebas = [
-        ('tests.verificar_parametros_linea', 'impedancia de linea contra la '
-         'impedancia caracteristica (Zc), que es fisica y no del modelo'),
-        ('tests.verificar_invariancia_frecuencia', 'la dinamica de frecuencia '
-         'no depende de detalles que no deberian afectarla'),
-        ('tests.verificar_escalones_espana', 'los SEIS escalones del P.O. 1.6, '
-         'los dos de bombeo incluidos'),
-        ('tests.verificar_milp_espana', 'el MILP no deslastra mas carga de la '
-         'que hay ni incumple el objetivo de cada escalon'),
-        ('tests.verify_pt_fr_flows', 'los flujos con Portugal y Francia'),
-    ]
-    caras = [
-        ('tests.verificar_limites_reactivos', 'la curva de capacidad de cada '
-         'maquina se respeta tras el lazo PV->PQ  (~1 min)'),
-        ('tests.verificar_compensacion', 'la compensacion shunt hace lo que '
-         'dice  (~1 min)'),
-    ]
-    print()
-    for s, d in pruebas + caras:
-        print(f"      {s:42s} {d}")
-    print()
-    if elegir("que corro", ['solo las rapidas', 'todas (añade ~2 min)']) \
-            .startswith('todas'):
-        pruebas = pruebas + caras
-    fallos = []
-    for s, _ in pruebas:
-        print(_c(f"\n   --- {s} ---", '1'))
-        r = subprocess.run([sys.executable, '-m', s], check=False, cwd=RAIZ)
-        if r.returncode != 0:
-            fallos.append(s)
-    print()
-    if fallos:
-        print(_c(f"   {len(fallos)} de {len(pruebas)} FALLARON: "
-                 f"{', '.join(fallos)}", '91'))
-    else:
-        print(_c(f"   las {len(pruebas)} pasaron", '92'))
 
 
 def sim_n1():
@@ -456,63 +411,6 @@ def sim_cascada():
     correr(['iberia.analisis_btm_cascada'] + _red())
 
 
-def sim_reactivos():
-    correr(['tests.verificar_limites_reactivos'])
-
-
-def sim_compensacion():
-    correr(['tests.verificar_compensacion'])
-
-
-def mant_lotes():
-    print()
-    parrafo("Lanza el proyecto entero en orden de dependencias -~92 min, o "
-            "~19 con --rapido- y dice que pasa y que falla, sin parar en el "
-            "primer fallo. Su PRIMER PASO reconstruye la red desde los CSV y "
-            "reescribe data/redes/*.nc.")
-    if not confirmar("lanzar el proyecto entero?"):
-        print(_c("   cancelado", '90'))
-        return
-    rapido = confirmar("saltar los pasos caros (y los que dependen de ellos)?")
-    correr(['tools.correr_todo'] + (['--rapido'] if rapido else []))
-
-
-# Los cuatro pasos que dejan el modelo ENTERO, en este orden y no en otro:
-# los dos puntos de operacion salen de iberia_scenario.nc, y el dimensionado
-# de los transformadores necesita el flujo de LOS DOS antes de escribir.
-# El menu anterior lanzaba solo el primero, que deja los 179 transformadores
-# en la semilla provisional (todos a 1.000 MVA): reconstruir desde el menu
-# DEGRADABA el modelo, y el smoke test lo aprobaba porque solo cuenta.
-RECONSTRUCCION = [
-    ['tests.test_pipeline_smoke'],
-    ['iberia.construccion.build_blackout_snapshot'],
-    ['iberia.construccion.build_punta_snapshot'],
-    ['iberia.construccion.dimensionar_trafos', '--aplicar'],
-]
-
-
-def mant_reconstruir():
-    print()
-    parrafo("DESTRUCTIVO: rehace la red entera desde los CSV de origen y "
-            "sobrescribe todos los .nc. No lo lances con un analisis largo "
-            "corriendo contra esas redes. Son cuatro pasos, en orden; si uno "
-            "falla, se para ahi.")
-    print()
-    for paso in RECONSTRUCCION:
-        print(f"      {' '.join(paso)}")
-    print()
-    if not confirmar("reconstruir la red?"):
-        print(_c("   cancelado", '90'))
-        return
-    for paso in RECONSTRUCCION:
-        if not correr(paso):
-            print(_c(f"\n   PARADO en {paso[0]}: la red puede haber quedado a "
-                     f"medias. Corrige y relanza esta opcion entera.", '91'))
-            return
-    _BASE.clear()
-    print(_c("\n   red reconstruida; el caso en memoria se descarto", '92'))
-
-
 def sim_mapa():
     # Los de resultados/visualizaciones/ salen de la red de construccion; los
     # de resultados/mapas/, de iberia.mapas. Ninguno depende del punto.
@@ -581,10 +479,9 @@ def con_resumen():
         print()
         print(_c(f"   AVISO: {len(tercos)} generador(es) no se pudieron "
                  f"meter en su curva de capacidad: {', '.join(tercos)}", '93'))
-        parrafo("El caso base NO esta limpio: un generador fija tension en "
-                "un nudo radial colgado de una rama de impedancia casi nula "
-                "(L1357, en Madrid). La cargabilidad de este punto se lee "
-                "como severidad relativa, no en absoluto.")
+        parrafo("El caso base NO esta limpio: hay generadores pidiendo "
+                "reactivo fuera de su curva, y la cargabilidad de este punto "
+                "debe leerse con cuidado.")
     print()
     print("   MEZCLA POR TECNOLOGIA (MW de placa, solo Iberia)")
     ib = n.generators[n.generators.bus.isin(list(es) + list(pt))]
@@ -797,7 +694,7 @@ def ana_sensibilidad():
 def ana_lambda():
     op = elegir("que barrido", [
         'lambda en operacion NORMAL (el que fija el limite)',
-        'calibracion completa de lambda  (~10 min)'])
+        'calibracion completa de lambda  (~1 min)'])
     if op.startswith('lambda en'):
         correr(['iberia.barrido_lambda_normal'])
     else:
@@ -924,13 +821,15 @@ def map_regenerar_carga():
 # Menu
 # ---------------------------------------------------------------------------
 #
-# Cada opcion declara SOBRE QUE corre. Es la correccion de fondo de esta
-# version: antes el menu pedia un punto de operacion al entrar y despues
-# 9 de sus 21 opciones lo ignoraban -unas porque son del modelo entero por
-# naturaleza, otras porque el modulo que lanzaban corre SIEMPRE sobre un
-# escenario fijo (ENTSO-E y lambda sobre el apagon, los verificadores de
-# reactivo sobre el generico)-, de modo que elegir la punta no cambiaba
-# nada en casi la mitad del menu y nada lo decia.
+# Cada opcion declara SOBRE QUE corre: unas usan el punto de operacion
+# elegido al entrar y otras son del modelo entero o de un escenario fijo
+# (la validacion y lambda, sobre el apagon). Asi el menu dice siempre a que
+# punto corresponde lo que muestra.
+#
+# Este menu es el de la copia PUBLICA: solo ofrece simular, consultar y
+# analizar. Las pruebas y el mantenimiento (verificadores, estado del
+# modelo, reconstruir la red, el proyecto por lotes) se ejecutan por linea
+# de comandos (tests/ y tools/), no desde aqui.
 #
 #   sobre=PUNTO    la opcion corre sobre el punto elegido
 #   sobre='texto'  NO depende del punto; el texto dice sobre que corre, y la
@@ -955,8 +854,8 @@ MENU = [
     _op('Simular', 'Simular contingencias (N-1)', sim_n1,
         "Saca de servicio lineas, transformadores y generadores y mide lo "
         "que la contingencia AÑADE sobre el caso base: sobrecargas nuevas, "
-        "cuanto empeora la cargabilidad maxima y cuanta carga IBERICA queda "
-        "aislada. La metrica es incremental a proposito: contada en "
+        "cuanto empeora la cargabilidad maxima y cuanta carga ESPANOLA queda "
+        "aislada (los agregados de PT y FR no cuentan). La metrica es incremental a proposito: contada en "
         "absoluto, casi cualquier contingencia hereda las sobrecargas del "
         "caso base y sale 'con problemas' sin haber causado ninguno."),
     _op('Simular', 'Dinamica de frecuencia (P.O. 1.6)', sim_frecuencia,
@@ -972,8 +871,7 @@ MENU = [
         "inversor, resuelve un MILP que asigna buses a los escalones del "
         "P.O. 1.6 teniendo en cuenta cuanta generacion embebida SANA se "
         "llevaria cada corte, y lo COMPARA con el reparto proporcional "
-        "ciego. (Antes eran dos opciones del menu que lanzaban la misma "
-        "orden.)"),
+        "ciego."),
     _op('Simular', 'Cascada BTM multironda', sim_cascada,
         "No supone que el sistema aguanta el primer golpe: encadena la "
         "caida de BTM con la perturbacion y deja correr la frecuencia hasta "
@@ -982,9 +880,7 @@ MENU = [
         "Alimenta el modelo con el evento real documentado y compara su "
         "frecuencia, segundo a segundo, con la que registro el Fraunhofer ISE "
         "en Malaga y publico NERC. Es la unica medida independiente contra la "
-        "que se contrasta la dinamica. (El modulo se llama "
-        "validar_contra_entsoe.py por razones historicas: no usa datos de "
-        "ENTSO-E.)",
+        "que se contrasta la dinamica.",
         no_aplica={'punta': "la traza medida es la del 28 de abril a las "
                             "12:33",
                    'escenario': "el escenario generico no es ningun "
@@ -1037,50 +933,20 @@ MENU = [
         map_regenerar_carga,
         "Vuelve a dibujar la cargabilidad de las ramas de este punto. "
         "Resuelve el caso base con los limites de reactivo: ~1 min en el "
-        "apagon, varios en la punta.",
+        "punto de operacion elegido.",
         no_aplica={'escenario': "no hay mapa de carga del escenario "
                                 "generico"}),
 
     # ===================== SOBRE EL MODELO ENTERO ========================
-    _op('Modelo', 'Estado del modelo y cifras citadas', sim_caso_base,
-        "Re-deriva EN VIVO las cifras principales del modelo, de los dos "
-        "escenarios: red, balance, tensiones, cargabilidad, inercia, BTM y "
-        "el estado del ultimo barrido N-1. Tarda varios minutos: resuelve los casos base "
-        "con los limites de reactivo.",
-        sobre='apagon + generico'),
-    _op('Modelo', 'Comprobar los verificadores', sim_invariantes,
-        "Lo que NO puede cambiar sin que algo este mal: la impedancia de "
-        "linea contra su impedancia caracteristica, los seis escalones del "
-        "P.O. 1.6, que el MILP no deslastre mas carga de la que hay, los "
-        "limites de reactivo y la compensacion shunt.",
-        sobre='la red y el deslastre'),
     _op('Modelo', 'Comparar los dos escenarios lado a lado', sim_comparar,
         "Somete el apagon y la punta a las mismas pruebas y los imprime en "
         "columnas: balance, tensiones, cargabilidad, inercia, la misma "
         "perturbacion y una muestra de N-1.",
         sobre='apagon y punta'),
-    _op('Modelo', 'Limites de reactivo (curva de capacidad)', sim_reactivos,
-        "Las pruebas de la curva de capacidad de cada maquina y del lazo "
-        "PV->PQ. Sin esto el colapso de tension es imposible de observar "
-        "por construccion.",
-        sobre='escenario generico'),
-    _op('Modelo', 'Compensacion shunt (reactores)', sim_compensacion,
-        "Las pruebas del reactor por bus que absorbe una fraccion de la "
-        "carga capacitiva de sus lineas.",
-        sobre='escenario generico'),
     _op('Modelo', 'Regenerar los mapas del modelo', sim_mapa,
         "Vuelve a dibujar los mapas que no dependen de un punto: la red, "
         "la red con fondo, el interactivo, la inercia instalada y el BTM.",
         sobre='la red, no un punto'),
-    _op('Modelo', 'Correr el proyecto entero por lotes', mant_lotes,
-        "La cadena entera en orden de dependencias, sin parar en el primer "
-        "fallo, con un resumen al final. Pide confirmacion.",
-        sobre='todo el proyecto'),
-    _op('Modelo', 'Reconstruir la red (DESTRUCTIVO)',
-        mant_reconstruir,
-        "Rehace la red y los dos puntos de operacion, y vuelve a dimensionar "
-        "los transformadores. Pide confirmacion.",
-        sobre='reescribe los .nc'),
     _op('Modelo', 'Como se construye cada escenario', con_escenarios,
         "De donde sale cada uno de los tres puntos de operacion y que aval "
         "tiene.",
@@ -1190,7 +1056,7 @@ def main():
             continue
         if not sel:
             # un Enter de mas no debe cerrar la sesion: tirarla cuesta
-            # reconstruir el caso base cacheado, que en la punta son minutos.
+            # reconstruir el caso base cacheado (~1 min).
             continue
         if not sel.isdigit() or not (1 <= int(sel) <= len(acciones)):
             print(_c("   opcion no valida", '91'))

@@ -1,0 +1,18 @@
+demanda_ccaa_ree_2024.csv - demanda electrica anual de 2024 por comunidad
+autonoma, en GWh, en barras de central.
+
+Fuente: Red Electrica de Espana, API publica REData
+  https://apidatos.ree.es/es/datos/demanda/evolucion
+  ?start_date=2024-01-01T00:00&end_date=2024-12-31T23:59
+  &time_trunc=year&geo_trunc=electric_system&geo_limit=ccaa&geo_ids=<geo_id>
+Consultada el 6-nov-2026. geo_id_redata es el identificador de cada
+comunidad en esa API.
+
+Comprobacion: las 15 comunidades peninsulares suman 233.627 GWh, que es la
+demanda peninsular de 2024. Madrid = 27.562 GWh (11,8 %), coherente con
+los 27.487 GWh (11 % del total nacional) de la nota de prensa de REE.
+
+Uso: iberia/construccion/build_full_network.py reescala la demanda de las barras de cada
+comunidad a su cuota de esta tabla (ver bus_ccaa.csv y asignar_ccaa.py).
+Baleares se incluye por completitud; fix_balearic.py elimina despues sus
+barras porque no estan conectadas en alterna a la peninsula.

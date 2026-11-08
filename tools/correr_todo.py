@@ -67,12 +67,13 @@ PASOS = [
     # --- 4. dinamica de frecuencia (D) y deslastre (E) -----------------
     ("iberia.btm_regional", [], 1, False),
     ("tests.verificar_invariancia_frecuencia", [], 1, False),
+    ("tests.verificar_respuesta_frecuencia", [], 1, False),
     ("iberia.analisis_btm_cascada", [], 2, False),
     ("tests.verificar_escalones_espana", [], 1, False),
     ("tests.verificar_milp_espana", [], 1, False),
     ("iberia.deslastre_btm_espana", [], 3, False),
     ("iberia.umbral_penetracion", [], 1, False),
-    ("iberia.calibrar_lambda_espana", [], 10, True),
+    ("iberia.calibrar_lambda_espana", [], 1, True),
 
     # --- 5. flujo de potencia y N-1 (lo caro) --------------------------
     ("tests.verificar_limites_reactivos", [], 1, False),

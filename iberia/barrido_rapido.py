@@ -433,10 +433,10 @@ def main():
         print(f"      {etq:28s} {int(m.sum()):5d}")
     print(f"  ALIVIAN sobrecargas del caso base : {len(alivian):5d}")
     ib = d.MW_desconectados_iberia
-    print(f"  aislan carga IBERICA              : {int((ib > 0.1).sum()):5d}  "
+    print(f"  aislan carga ESPANOLA             : {int((ib > 0.1).sum()):5d}  "
           f"(peor: {ib.max():,.1f} MW)")
     solo_fr = int(((d.MW_desconectados > 0.1) & (ib <= 0.1)).sum())
-    print(f"  aislan solo carga agregada de FR  : {solo_fr:5d}  "
+    print(f"  aislan solo carga agregada FR/PT : {solo_fr:5d}  "
           f"(no miden la red espanola, ver separar_islas)")
     if len(peores):
         print(f"  peor cargabilidad alcanzada       : {peores.carga_max_pct.max():.1f} %")

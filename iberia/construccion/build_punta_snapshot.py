@@ -49,17 +49,15 @@ Lo que SI es solido, y es lo que justifica el escenario: a las 21 h de
 enero la fotovoltaica es CERO. El sol se pone sobre las 18:10 en Madrid.
 Eso no depende de ninguna media mensual.
 
-LIMITACION IMPORTANTE, medida: este escenario sirve para la DINAMICA,
-no para el flujo de potencia. El caso base del N-1 sobre esta red da
-538,7% de cargabilidad y la tension se hunde a 0,7491 pu, porque las
-capacidades de linea del modelo se ajustaron (fix_scenario.py reescribe
-s_nom a partir de los flujos) para el escenario de ~25 GW. A 40 GW la
-red simplemente no transporta.
-
-Eso NO invalida el escenario para lo que existe -el contraste de inercia
-y la ausencia de BTM solar no dependen del flujo AC- pero significa que
-`analisis_n1.py --red punta` no produce un resultado citable. Si alguna
-vez hace falta el N-1 en punta, hay que redimensionar la red primero.
+FLUJO DE POTENCIA (corregido el 6-nov-2026). Este docstring decia que
+la punta "solo sirve para la dinamica" porque su caso base daba 538,7 % de
+cargabilidad y 0,75 pu de tension, y lo atribuia a las capacidades de
+linea. No era eso: el dataset ponia el 37,5 % de la demanda espanola en
+Madrid (REE da el 11,8 %), y a 40 GW eso eran 16 GW en Madrid. Con la
+demanda repartida por comunidad autonoma (build_full_network.py) el caso
+base queda en 5 sobrecargas (max 119,9 %) y Madrid a 1,01 pu, y el N-1 de
+punta es citable contra esa referencia. Las 5 que quedan vienen del
+despacho uniforme sin orden de merito.
 
 No modifica iberia_scenario.nc: escribe una red nueva."""
 from iberia import config

@@ -10,7 +10,7 @@ de data/fuentes/contorno_iberia.geojson (Natural Earth, dominio publico), de
 modo que los mapas se dibujan SIN internet y sin dependencias cartograficas.
 
 El de cargabilidad resuelve antes el caso base del punto con los limites de
-reactivo: ~1 min en el apagon, varios en la punta.
+reactivo: alrededor de 1 min en cada punto de operacion.
 """
 import argparse
 import os
@@ -25,32 +25,34 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 from iberia import config
 
-AZUL = '#1f4e79'
-NARANJA = '#c55a11'
-VERDE = '#2e7d4f'
-ROJO = '#9e2a2b'
-GRIS = '#595959'
-GRIS_SUAVE = '#dcdcdc'
-MORADO = '#6a3d9a'
+# Estilo y mapas copiados de JUANCHO ESPAÑA/informe/figuras.py (7-nov-2026):
+# mismo aspecto que las figuras del informe.
+AZUL = 'tab:blue'
+NARANJA = 'tab:orange'
+VERDE = 'tab:green'
+ROJO = 'tab:red'
+GRIS = 'tab:gray'
+GRIS_SUAVE = '#d0d0d0'
+MORADO = 'tab:purple'
+AMARILLO = '#f2c200'
 
 plt.rcParams.update({
-    'font.family': 'serif',
-    'font.serif': ['STIXGeneral', 'DejaVu Serif'],
-    'mathtext.fontset': 'stix',
-    'font.size': 8, 'axes.titlesize': 8, 'axes.labelsize': 8,
-    'legend.fontsize': 7.5, 'xtick.labelsize': 7.5, 'ytick.labelsize': 7.5,
-    'axes.spines.top': False, 'axes.spines.right': False,
-    'axes.edgecolor': '#333333', 'axes.linewidth': 0.6,
-    'axes.grid': True, 'grid.color': GRIS_SUAVE, 'grid.linewidth': 0.4,
-    'axes.axisbelow': True,
-    'xtick.direction': 'in', 'ytick.direction': 'in',
-    'xtick.major.width': 0.6, 'ytick.major.width': 0.6,
-    'xtick.major.size': 3, 'ytick.major.size': 3,
-    'legend.frameon': False, 'legend.handlelength': 1.8,
-    'legend.handletextpad': 0.6, 'legend.labelspacing': 0.35,
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['DejaVu Sans'],
+    'mathtext.fontset': 'dejavusans',
+    'font.size': 7.5, 'axes.titlesize': 7.5, 'axes.labelsize': 7.5,
+    'legend.fontsize': 6.8, 'xtick.labelsize': 7, 'ytick.labelsize': 7,
+    'axes.spines.top': True, 'axes.spines.right': True,
+    'axes.edgecolor': 'black', 'axes.linewidth': 0.8,
+    'axes.grid': True, 'grid.color': '#b0b0b0', 'grid.linewidth': 0.4,
+    'grid.alpha': 0.5, 'axes.axisbelow': True,
+    'xtick.direction': 'out', 'ytick.direction': 'out',
+    'legend.frameon': True, 'legend.framealpha': 0.9,
+    'legend.edgecolor': '#cccccc', 'legend.fancybox': True,
     'figure.dpi': 120,
     # NO se usa savefig.bbox='tight': recorta el lienzo al contenido, el
     # fichero sale mas estrecho que el figsize, y el width=\textwidth lo
@@ -60,6 +62,7 @@ plt.rcParams.update({
     'figure.constrained_layout.h_pad': 0.02,
     'figure.constrained_layout.w_pad': 0.02,
 })
+
 
 def guardar(fig, nombre):
     ruta = config.mapa(nombre + '.png')
@@ -133,9 +136,37 @@ def _fondo(ax, xlim, ylim):
                 linewidth=0.7 if es_ib else 0.4, zorder=0)
     ax.set_aspect('equal')
     ax.set_xlim(*xlim); ax.set_ylim(*ylim)
-    ax.set_axis_off()
+    _marco_geografico(ax)
 
 
+def _marco_geografico(ax):
+    """Marco con coordenadas en los CUATRO lados, como un mapa clasico.
+
+    Longitud abajo y arriba, latitud a izquierda y derecha (los dos
+    laterales repiten la misma escala: es un marco, no un segundo eje).
+    """
+    def lon(v, _p):
+        v = round(v, 6)
+        return '0°' if v == 0 else '%s° %s' % (coma(abs(v), 0), 'O' if v < 0 else 'E')
+
+    def lat(v, _p):
+        return '%s° N' % coma(v, 0)
+
+    ax.grid(False)
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
+    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
+    ax.xaxis.set_major_formatter(FuncFormatter(lon))
+    ax.yaxis.set_major_formatter(FuncFormatter(lat))
+    ax.tick_params(top=True, bottom=True, left=True, right=True,
+                   labeltop=True, labelbottom=True, labelleft=True,
+                   labelright=True, labelsize=6.5)
+    for lado in ax.spines.values():
+        lado.set_visible(True); lado.set_linewidth(0.8)
+
+
+# Encuadre: Iberia entera mas el trozo de Francia donde estan sus cuatro
+# nudos agregados. Ajustarlo a los datos recortaria la costa y dejaria
+# una silueta que no se reconoce.
 ENCUADRE_X = (-10.0, 4.4)
 ENCUADRE_Y = (35.8, 44.2)
 
@@ -155,56 +186,57 @@ def fig_mapa_red():
     \SI{14570}{MW} de carga aislada, el Slack que saltaba a Francia, las
     perdidas infladas).
 
-    La leyenda va FUERA del area del mapa. Dentro tapaba Portugal, y la
-    regla 2 del generador prohibe cargar el area de datos con cosas que
-    no son datos.
+    La leyenda va DENTRO, en la esquina inferior derecha (el Mediterraneo
+    al sur de Baleares, que no tiene red). Fuera dejaba un marco blanco
+    que descuadraba la figura.
     """
     n = _red('apagon')
     b = n.buses
-    fig, ax = plt.subplots(figsize=(6.30, 4.05))
+    fig, ax = plt.subplots(figsize=(6.30, 3.75))
     _fondo(ax, ENCUADRE_X, ENCUADRE_Y)
 
-    # Lineas por nivel de tension. El 400 kV va encima y mas grueso
-    # porque es el que estructura el sistema; el 220 es la malla.
-    niveles = [(132.0, '#aebcc9', 0.30, 'linea de 132 kV'),
-               (220.0, '#7d97b0', 0.42, 'linea de 220 kV'),
-               (400.0, AZUL, 0.85, 'linea de 400 kV')]
+    # Convencion de colores (7-nov-2026): 400 kV en AZUL, la malla de
+    # 220 y 132 kV en ROJO e interconexiones en AMARILLO. Antes los tres
+    # niveles iban en tonos de un mismo azul y no se distinguian.
+    from matplotlib.collections import LineCollection
+    niveles = [((132.0, 220.0), ROJO, 0.40, 2, 'Línea de 220 y 132 kV'),
+               ((400.0,), AZUL, 0.85, 3, 'Línea de 400 kV')]
     v0 = b.v_nom.reindex(n.lines.bus0).values
     p0 = n.lines.bus0.str[:2]; p1 = n.lines.bus1.str[:2]
     interna = (p0 == p1).values
-    for v, color, lw, etq in niveles:
-        sel = n.lines[np.isclose(v0, v) & interna]
+    for vs, color, lw, z, etq in niveles:
+        en_nivel = np.zeros(len(v0), dtype=bool)
+        for v in vs:
+            en_nivel |= np.isclose(v0, v)
+        sel = n.lines[en_nivel & interna]
         segs = [[(b.at[l.bus0, 'x'], b.at[l.bus0, 'y']),
                  (b.at[l.bus1, 'x'], b.at[l.bus1, 'y'])]
                 for _, l in sel.iterrows()]
-        from matplotlib.collections import LineCollection
         ax.add_collection(LineCollection(
-            segs, colors=color, linewidths=lw, zorder=2 if v < 400 else 3,
-            capstyle='round', label='%s (%d)' % (etq, len(sel))))
+            segs, colors=color, linewidths=lw, zorder=z,
+            capstyle='round', label=etq))
 
     cruz = n.lines[~interna]
     segs = [[(b.at[l.bus0, 'x'], b.at[l.bus0, 'y']),
              (b.at[l.bus1, 'x'], b.at[l.bus1, 'y'])]
             for _, l in cruz.iterrows()]
-    from matplotlib.collections import LineCollection
     ax.add_collection(LineCollection(
-        segs, colors=NARANJA, linewidths=1.5, zorder=4, capstyle='round',
-        label='interconexion (%d)' % len(cruz)))
+        segs, colors=AMARILLO, linewidths=1.8, zorder=4, capstyle='round',
+        label='Interconexión internacional'))
 
     es = b[b.index.str.startswith('ES')]
     pt = b[b.index.str.startswith('PT')]
     fr = b[b.index.str.startswith('FR')]
-    ax.scatter(es.x, es.y, s=1.4, color='#2f4256', zorder=5, linewidths=0,
-               label='barra espanola (%d)' % len(es))
+    # Las barras espanolas se dibujan pero NO van en la leyenda.
+    ax.scatter(es.x, es.y, s=1.2, color='#333333', zorder=5, linewidths=0)
     ax.scatter(pt.x, pt.y, s=30, marker='s', facecolor='white',
                edgecolor=VERDE, lw=1.1, zorder=6,
-               label='agregado de Portugal (%d)' % len(pt))
+               label='Agregado de Portugal')
     ax.scatter(fr.x, fr.y, s=30, marker='s', facecolor='white',
-               edgecolor=ROJO, lw=1.1, zorder=6,
-               label='agregado de Francia (%d)' % len(fr))
+               edgecolor=MORADO, lw=1.1, zorder=6,
+               label='Agregado de Francia')
 
-    ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.0), fontsize=7,
-              labelspacing=0.55, borderpad=0.0)
+    ax.legend(loc='lower right', fontsize=6.5)
     guardar(fig, 'mapa_red')
 
 
@@ -222,30 +254,44 @@ def fig_mapa_btm():
     cap = cap[cap > 0]
     b = n.buses.loc[cap.index]
 
-    fig, ax = plt.subplots(figsize=(6.30, 4.05))
+    fig, ax = plt.subplots(figsize=(6.30, 3.75))
     _fondo(ax, ENCUADRE_X, ENCUADRE_Y)
     for _, l in n.lines.iterrows():
         ax.plot([n.buses.at[l.bus0, 'x'], n.buses.at[l.bus1, 'x']],
                 [n.buses.at[l.bus0, 'y'], n.buses.at[l.bus1, 'y']],
                 color='#d7dde3', lw=0.25, zorder=1)
 
-    ax.scatter(b.x, b.y, s=cap.values * 0.9, color=NARANJA, alpha=0.55,
-               linewidths=0.2, edgecolor='white', zorder=4)
-    for mw in (50, 150, 250):
-        ax.scatter([], [], s=mw * 0.9, color=NARANJA, alpha=0.55,
-                   linewidths=0.2, edgecolor='white',
-                   label='%s MW' % coma(mw, 0))
-    ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.0), fontsize=7,
-              labelspacing=1.3, borderpad=0.0, title='BTM por barra',
-              title_fontsize=7.5)
+    # Color por banda de potencia (el tamano sigue siendo proporcional
+    # al area): con un solo naranja las barras pequenas y las grandes se
+    # confundian. En la leyenda, rectangulos de color, no circulos.
+    from matplotlib.patches import Patch
+    bandas = [(0.0, 1.0, '#fed976', '< 1 MW'),
+              (1.0, 10.0, '#fd8d3c', '1 – 10 MW'),
+              (10.0, 50.0, '#e31a1c', '10 – 50 MW'),
+              (50.0, float('inf'), '#800026', '> 50 MW')]
+    manejadores = []
+    for lo, hi, color, etq in bandas:
+        sel = cap[(cap >= lo) & (cap < hi)]
+        if len(sel):
+            ax.scatter(b.loc[sel.index, 'x'], b.loc[sel.index, 'y'],
+                       s=np.maximum(sel.values * 0.9, 2.0), color=color,
+                       alpha=0.8, linewidths=0.2, edgecolor='#555555',
+                       zorder=4 + bandas.index((lo, hi, color, etq)))
+        manejadores.append(Patch(facecolor=color, edgecolor='#555555',
+                                 lw=0.4, label=etq))
+    ax.legend(handles=manejadores, loc='lower right', fontsize=6.5,
+              title='BTM por barra', title_fontsize=6.8)
     guardar(fig, 'mapa_btm')
 
 
+# Bandas de cargabilidad. Los cuatro tonos conservan la semantica
+# -verde tranquilo, rojo alarma- y el grosor crece con la banda, de modo
+# que el color nunca carga solo el dato.
 BANDAS_CARGA = [
-    (0.0, 50.0, '#157f33', 0.30, 'menos del 50 %'),
-    (50.0, 75.0, '#d9a406', 0.60, 'del 50 al 75 %'),
-    (75.0, 100.0, '#dd5f0a', 1.00, 'del 75 al 100 %'),
-    (100.0, float('inf'), '#b01717', 1.70, 'mas del 100 %'),
+    (0.0, 50.0, '#2ca02c', 0.30, '< 50 %'),
+    (50.0, 75.0, '#e6b800', 0.60, '50 – 75 %'),
+    (75.0, 100.0, '#ff7f0e', 1.00, '75 – 100 %'),
+    (100.0, float('inf'), '#d62728', 1.70, '> 100 %'),
 ]
 
 
@@ -262,13 +308,13 @@ def _mapa_cargabilidad(red):
     b = nl.buses
     pct = an.cargabilidad(nl)
 
-    fig, ax = plt.subplots(figsize=(6.30, 4.05))
+    fig, ax = plt.subplots(figsize=(6.30, 3.75))
     _fondo(ax, ENCUADRE_X, ENCUADRE_Y)
     for lo, hi, color, lw, etq in BANDAS_CARGA:
         sel = [k for k in nl.lines.index
                if lo <= float(pct.get(k, 0.0)) < hi]
         if not sel:
-            continue
+            continue          # la banda sigue en la leyenda (ver abajo)
         segs = [[(b.at[nl.lines.at[k, 'bus0'], 'x'],
                   b.at[nl.lines.at[k, 'bus0'], 'y']),
                  (b.at[nl.lines.at[k, 'bus1'], 'x'],
@@ -276,10 +322,15 @@ def _mapa_cargabilidad(red):
         ax.add_collection(LineCollection(
             segs, colors=color, linewidths=lw, capstyle='round',
             zorder=2 + BANDAS_CARGA.index((lo, hi, color, lw, etq)),
-            label='%s (%d)' % (etq, len(sel))))
-    ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1.0), fontsize=7,
-              labelspacing=0.55, borderpad=0.0,
-              title='cargabilidad', title_fontsize=7.5)
+            ))
+    # Las CUATRO bandas siempre en la leyenda, aunque alguna este vacia
+    # (el apagon no tiene ramas > 100 %): asi los mapas de los escenarios
+    # se leen con la misma clave.
+    from matplotlib.lines import Line2D
+    manejadores = [Line2D([], [], color=c, lw=max(w, 0.8) * 1.4, label=e)
+                   for _lo, _hi, c, w, e in BANDAS_CARGA]
+    ax.legend(handles=manejadores, loc='lower right', fontsize=6.5,
+              title='Cargabilidad', title_fontsize=6.8)
     guardar(fig, 'mapa_carga_%s' % red)
 
 

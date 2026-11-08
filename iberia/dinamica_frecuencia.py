@@ -1,5 +1,5 @@
 """Dinamica de frecuencia tras una perturbacion, adaptada de
-JUANCHO/agc_deslastre.py (modelo de una sola masa: respuesta inercial,
+stn/agc_deslastre.py del modelo del STN colombiano (modelo de una sola masa: respuesta inercial,
 regulacion primaria por estatismo, amortiguamiento de la carga).
 
 A diferencia del STN, aqui NO se modela el EDAC (deslastre automatico por
@@ -18,9 +18,65 @@ F0 = 50.0                # Hz, frecuencia nominal europea (Colombia usa 60)
 ESTATISMO = 0.05          # 5%, mismo valor que el STN - no hay dato real
                            # de estatismo por maquina para España
 AMORTIGUAMIENTO = 1.5      # % carga por % frecuencia, igual que el STN
-T_GOBERNADOR = 8.0         # s - HEREDADO de Colombia, no validado para el
-                           # parque espanol (ver diseño, limitaciones)
 RESERVA_PRIMARIA = 0.10    # fraccion de la capacidad girando disponible
+
+# --- Regulacion primaria: el modelo de respuesta de frecuencia estandar --
+#
+# CORREGIDO EL 4-NOV-2026. Hasta entonces la primaria era un UNICO retardo
+# de primer orden de 8 s, heredado del modelo colombiano y marcado como no
+# validado. Le faltaba la parte de la turbina que responde al instante, y
+# eso la hacia llegar tarde: ante 3.000 MW en la punta el nadir rozaba
+# 49,000 Hz -el umbral del primer escalon del P.O. 1.6- por milesimas,
+# disparaba 6.010 MW de golpe y la frecuencia subia a 51,46 Hz.
+#
+# Ahora se usa el modelo de respuesta de frecuencia de Anderson y Mirheydar
+# (IEEE Trans. Power Syst. 5(3):720-729, 1990): una turbina con
+# recalentamiento, en la que la fraccion de alta presion F_H responde casi
+# de inmediato y el resto llega con la constante de recalentamiento T_R.
+# Valores TIPICOS del articulo, no ajustados a ninguna medida de este
+# modelo: F_H = 0,3 y T_R = 8 s. Es decir, los 8 s no estaban mal; faltaba
+# la fraccion inmediata.
+#
+# Contraste con la traza del 28-A (validar_traza_28a.py): la caida total
+# pasa de 0,973 a 0,776 Hz frente a 0,750 medidos, y el error medio de 0,207
+# a 0,105 Hz. Pero esa traza es la de Europa continental entera hasta la
+# separacion de Francia, y el modelo es una Iberia aislada: es un indicio
+# COHERENTE con el cambio, no una validacion del regulador. El cambio se
+# sostiene por la literatura.
+F_H_ALTA_PRESION = 0.3     # fraccion de respuesta inmediata
+T_GOBERNADOR = 8.0         # s, constante de recalentamiento T_R
+
+# --- Regulacion secundaria (AGC) ------------------------------------------
+#
+# Sin ella la frecuencia nunca vuelve a 50 Hz: la primaria la deja en el
+# error de estatismo, que es su comportamiento correcto. MISMO esquema que
+# el modelo del STN colombiano (stn/agc_deslastre.py), a proposito, para que los
+# dos modelos se puedan comparar:
+#
+#     d(dP_agc)/dt = -(1/T_AGC) * B * (f - f0),   B = P_gen/R + D*P_carga
+#
+# con B la caracteristica natural del sistema en MW/Hz, y la reserva
+# COMPARTIDA con la primaria (se acota la suma, no cada una por su lado).
+#
+# EL RETARDO NO ES UN DETALLE. La secundaria no actua hasta 30 s despues de
+# la primera perturbacion: el nadir y los escalones del P.O. 1.6 ocurren en
+# los primeros segundos, y un AGC que arrancara antes haria parecer al
+# sistema mas robusto justo en lo que mide este trabajo. Con el retardo, el
+# AGC no cambia ni el nadir ni el deslastre (verificar_respuesta_frecuencia).
+T_AGC = 30.0               # s, constante de tiempo del lazo secundario
+T_AGC_RETARDO = 30.0       # s desde la perturbacion hasta que actua
+
+# --- Reduccion de generacion por sobrefrecuencia (LFSM-O) -----------------
+#
+# El Reglamento (UE) 2016/631 (NC RfG, art. 13.2) exige a TODA la
+# generacion que reduzca su produccion cuando la frecuencia supera un
+# umbral de 50,2 Hz, con un estatismo entre el 2 y el 12 % (5 % por
+# defecto). Sin ella, un deslastre que corta mas de lo que falta no lo
+# frena nadie: era la otra mitad de la joroba de 51,46 Hz. No sale de la
+# reserva de la primaria: es una reduccion de la produccion.
+F_LFSM_O = 50.2            # Hz, umbral
+ESTATISMO_LFSM_O = 0.05    # 5 %
+T_LFSM_O = 2.0             # s, retardo de la respuesta
 
 # Carga a la que opera una unidad ACOPLADA. Sirve para deducir cuanta
 # capacidad esta de verdad sincronizada a partir de la potencia
@@ -301,7 +357,8 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
                        umbrales_bombeo=EDAC_UMBRALES_BOMBEO_ESPANA,
                        fracciones_bombeo=EDAC_FRACCION_BOMBEO_ESPANA,
                        umbrales=EDAC_UMBRALES_HZ_ESPANA,
-                       fracciones=EDAC_FRACCION_ESPANA):
+                       fracciones=EDAC_FRACCION_ESPANA,
+                       con_agc=True, con_lfsm=True, t_fin=None):
     """Integra la ecuacion de oscilacion tras una serie de perturbaciones.
 
     `eventos` es una lista de dicts {'t': segundos, 'dP_gen': MW perdidos
@@ -318,8 +375,15 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
     desactivado: el comportamiento de quien no lo pide (D4 incluido) es
     identico a antes de este cambio.
 
-    Devuelve (t, f, traza) - sin AGC ni reparto por bus: eso lo decide el
-    MILP de deslastre_btm_espana.py (E2/E4) a partir de traza['escalones'].
+    `con_agc` y `con_lfsm` activan la regulacion secundaria y la reduccion
+    por sobrefrecuencia (ver las constantes de arriba). Los dos estan
+    activados por defecto, porque son parte de un sistema real; se pueden
+    apagar para aislar su efecto. `t_fin` alarga la integracion (por
+    defecto T_FIN): para ver la vuelta a 50 Hz hacen falta un par de
+    minutos.
+
+    Devuelve (t, f, traza) - sin reparto por bus: eso lo decide el MILP de
+    deslastre_btm_espana.py (E2/E4) a partir de traza['escalones'].
     """
     ev = sorted(eventos, key=lambda e: float(e.get('t', 0.0)))
     for e in ev:
@@ -327,7 +391,7 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
         e.setdefault('dP_carga', 0.0)
         e['aplicado'] = False
 
-    n = int(T_FIN / DT)
+    n = int((T_FIN if t_fin is None else float(t_fin)) / DT)
     t = np.arange(n) * DT
     f = np.zeros(n)
     f[0] = F0
@@ -340,6 +404,12 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
 
     a_gob = float(np.exp(-DT / T_GOBERNADOR))
     dP_prim = 0.0
+    x_recal = 0.0       # estado de la parte de recalentamiento de la turbina
+    dP_agc = 0.0        # aporte acumulado de la regulacion secundaria
+    dP_lfsm = 0.0       # reduccion por sobrefrecuencia (negativa)
+    a_lfsm = float(np.exp(-DT / T_LFSM_O))
+    t_agc_desde = (min(float(e.get('t', 0.0)) for e in ev) if ev else 0.0) \
+        + T_AGC_RETARDO
     carga_deslastrada = 0.0
 
     escalones = ([{'umbral': u, 'fraccion': fr, 'disparado': False,
@@ -384,14 +454,37 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
             (df_pu - bm) if df_pu > bm else 0.0)
         objetivo = -df_util / sis.R_eq * sis.P_gen
         objetivo = max(-reserva_baja, min(objetivo, reserva))
-        dP_prim = objetivo + (dP_prim - objetivo) * a_gob
+        # Turbina de recalentamiento (Anderson-Mirheydar): la fraccion de
+        # alta presion sigue al objetivo al instante; el resto, con T_R.
+        x_recal = objetivo + (x_recal - objetivo) * a_gob
+        dP_prim = F_H_ALTA_PRESION * objetivo \
+            + (1.0 - F_H_ALTA_PRESION) * x_recal
+
+        # Secundaria: integrador puro sobre el error de frecuencia, a partir
+        # de T_AGC_RETARDO tras la primera perturbacion.
+        if con_agc and t[k] >= t_agc_desde:
+            B = (sis.P_gen / sis.R_eq + AMORTIGUAMIENTO * P_carga) / F0
+            dP_agc -= (DT / T_AGC) * B * (f[k - 1] - F0)
+        # La reserva es UNA y la comparten los dos lazos.
+        aporte = dP_prim + dP_agc
+        if aporte > reserva:
+            dP_agc = reserva - dP_prim
+        elif aporte < -reserva_baja:
+            dP_agc = -reserva_baja - dP_prim
+
+        # LFSM-O: por encima de 50,2 Hz toda la generacion reduce.
+        if con_lfsm:
+            exceso = max(0.0, (f[k - 1] - F_LFSM_O) / F0)
+            obj_lfsm = -exceso / ESTATISMO_LFSM_O * sis.P_gen
+            dP_lfsm = obj_lfsm + (dP_lfsm - obj_lfsm) * a_lfsm
 
         # Se descuenta carga_deslastrada ademas de sis.exportacion (ver
         # Sistema.__init__ en D2): la carga efectiva es la que queda tras
         # los escalones que ya dispararon.
         carga_efectiva = (P_carga - carga_deslastrada) * (
             1.0 + AMORTIGUAMIENTO * df_pu)
-        desbalance = (P_gen + dP_prim) - carga_efectiva - sis.exportacion
+        desbalance = (P_gen + dP_prim + dP_agc + dP_lfsm) - carga_efectiva \
+            - sis.exportacion
         df_dt = desbalance / (2.0 * sis.H * max(sis.S_base, 1e-9)) * F0
         f[k] = f[k - 1] + df_dt * DT
 
@@ -473,6 +566,8 @@ def simular_frecuencia(sis, eventos, con_deslastre=False,
         'rocof_inicial': float((f[1] - f[0]) / DT),
         'colapso': colapso,
         'aporte_primaria': float(dP_prim),
+        'aporte_agc': float(dP_agc),
+        'aporte_lfsm': float(dP_lfsm),
         'eventos': ev,
         'escalones': escalones,
         'deslastre_total': float(carga_deslastrada),
