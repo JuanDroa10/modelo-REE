@@ -1,6 +1,6 @@
 # Modelo-Iberia — dinámica de frecuencia y generación detrás del contador del sistema eléctrico ibérico
 
-Modelo de la **red de transporte peninsular española** de 132, 220 y 400 kV, desarrollado sobre [PyPSA](https://pypsa.org/), que incorpora Portugal y Francia como sistemas eléctricos vecinos. Sobre esta representación se implementan cuatro capas principales de análisis:
+Modelo de la **red de transporte peninsular española** de 220 y 400 kV, desarrollado sobre [PyPSA](https://pypsa.org/), que incorpora Portugal y Francia como sistemas eléctricos vecinos. Sobre esta representación se implementan cuatro capas principales de análisis:
 
 - **Contingencias N-1:** evaluación mediante flujo de potencia AC e incorporación de los límites de capacidad de potencia reactiva de cada máquina.
 - **Dinámica de frecuencia:** simulación de la respuesta del sistema ante perturbaciones, considerando el esquema de deslastre por mínima frecuencia de Red Eléctrica de España (P.O. 1.6), compuesto por seis escalones, la regulación primaria, la regulación secundaria (AGC) y el modo de respuesta a sobrefrecuencia (LFSM-O).
